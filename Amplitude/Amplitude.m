@@ -87,13 +87,6 @@ static NSString *const SEQUENCE_NUMBER = @"sequence_number";
     UIBackgroundTaskIdentifier _uploadTaskID;
 
     AMPDeviceInfo *_deviceInfo;
-    BOOL _useAdvertisingIdForDeviceId;
-    BOOL _disableIdfaTracking;
-
-    CLLocation *_lastKnownLocation;
-    BOOL _locationListeningEnabled;
-    CLLocationManager *_locationManager;
-    AMPLocationManagerDelegate *_locationManagerDelegate;
 
     BOOL _inForeground;
     BOOL _offline;
@@ -173,29 +166,12 @@ static NSString *const SEQUENCE_NUMBER = @"sequence_number";
     [[Amplitude instance] setUserId:userId];
 }
 
-+ (void)enableLocationListening {
-    [[Amplitude instance] enableLocationListening];
-}
-
-+ (void)disableLocationListening {
-    [[Amplitude instance] disableLocationListening];
-}
-
-+ (void)useAdvertisingIdForDeviceId {
-    [[Amplitude instance] useAdvertisingIdForDeviceId];
-}
-
 + (void)printEventsCount {
     [[Amplitude instance] printEventsCount];
 }
 
 + (NSString*)getDeviceId {
     return [[Amplitude instance] getDeviceId];
-}
-
-+ (void)updateLocation
-{
-    [[Amplitude instance] updateLocation];
 }
 
 #pragma mark - Main class methods
@@ -220,12 +196,9 @@ static NSString *const SEQUENCE_NUMBER = @"sequence_number";
 #endif
 
         _initialized = NO;
-        _locationListeningEnabled = YES;
         _sessionId = -1;
         _updateScheduled = NO;
         _updatingCurrently = NO;
-        _useAdvertisingIdForDeviceId = NO;
-        _disableIdfaTracking = NO;
         _backoffUpload = NO;
         _offline = NO;
         _instanceName = SAFE_ARC_RETAIN(instanceName);
@@ -307,15 +280,6 @@ static NSString *const SEQUENCE_NUMBER = @"sequence_number";
 
             [_backgroundQueue setSuspended:NO];
         }];
-
-        // CLLocationManager must be created on the main thread
-        dispatch_async(dispatch_get_main_queue(), ^{
-            Class CLLocationManager = NSClassFromString(@"CLLocationManager");
-            _locationManager = [[CLLocationManager alloc] init];
-            _locationManagerDelegate = [[AMPLocationManagerDelegate alloc] init];
-            SEL setDelegate = NSSelectorFromString(@"setDelegate:");
-            [_locationManager performSelector:setDelegate withObject:_locationManagerDelegate];
-        });
 
         [self addObservers];
     }
@@ -412,9 +376,6 @@ static NSString *const SEQUENCE_NUMBER = @"sequence_number";
     // Release instance variables
     SAFE_ARC_RELEASE(_deviceInfo);
     SAFE_ARC_RELEASE(_initializerQueue);
-    SAFE_ARC_RELEASE(_lastKnownLocation);
-    SAFE_ARC_RELEASE(_locationManager);
-    SAFE_ARC_RELEASE(_locationManagerDelegate);
     SAFE_ARC_RELEASE(_propertyList);
     SAFE_ARC_RELEASE(_propertyListPath);
     SAFE_ARC_RELEASE(_dbHelper);
@@ -466,7 +427,7 @@ static NSString *const SEQUENCE_NUMBER = @"sequence_number";
         _apiKey = apiKey;
 
         [self runOnBackgroundQueue:^{
-            _deviceInfo = [[AMPDeviceInfo alloc] init:_disableIdfaTracking];
+            _deviceInfo = [[AMPDeviceInfo alloc] init:YES];
             [self initializeDeviceId];
             if (setUserId) {
                 [self setUserId:userId];
@@ -690,8 +651,6 @@ static NSString *const SEQUENCE_NUMBER = @"sequence_number";
     [event setValue:_deviceInfo.osVersion forKey:@"os_version"];
     [event setValue:_deviceInfo.model forKey:@"device_model"];
     [event setValue:_deviceInfo.manufacturer forKey:@"device_manufacturer"];
-    [event setValue:_deviceInfo.carrier forKey:@"carrier"];
-    [event setValue:_deviceInfo.country forKey:@"country"];
     [event setValue:_deviceInfo.language forKey:@"language"];
     NSDictionary *library = @{
         @"name": kAMPLibrary,
@@ -700,38 +659,6 @@ static NSString *const SEQUENCE_NUMBER = @"sequence_number";
     [event setValue:library forKey:@"library"];
     [event setValue:[AMPUtils generateUUID] forKey:@"uuid"];
     [event setValue:[NSNumber numberWithLongLong:[self getNextSequenceNumber]] forKey:@"sequence_number"];
-
-    NSMutableDictionary *apiProperties = [event valueForKey:@"api_properties"];
-
-    NSString* advertiserID = _deviceInfo.advertiserID;
-    if (advertiserID) {
-        [apiProperties setValue:advertiserID forKey:@"ios_idfa"];
-    }
-    NSString* vendorID = _deviceInfo.vendorID;
-    if (vendorID) {
-        [apiProperties setValue:vendorID forKey:@"ios_idfv"];
-    }
-    
-    if (_lastKnownLocation != nil) {
-        @synchronized (_locationManager) {
-            NSMutableDictionary *location = [NSMutableDictionary dictionary];
-
-            // Need to use NSInvocation because coordinate selector returns a C struct
-            SEL coordinateSelector = NSSelectorFromString(@"coordinate");
-            NSMethodSignature *coordinateMethodSignature = [_lastKnownLocation methodSignatureForSelector:coordinateSelector];
-            NSInvocation *coordinateInvocation = [NSInvocation invocationWithMethodSignature:coordinateMethodSignature];
-            [coordinateInvocation setTarget:_lastKnownLocation];
-            [coordinateInvocation setSelector:coordinateSelector];
-            [coordinateInvocation invoke];
-            CLLocationCoordinate2D lastKnownLocationCoordinate;
-            [coordinateInvocation getReturnValue:&lastKnownLocationCoordinate];
-
-            [location setValue:[NSNumber numberWithDouble:lastKnownLocationCoordinate.latitude] forKey:@"lat"];
-            [location setValue:[NSNumber numberWithDouble:lastKnownLocationCoordinate.longitude] forKey:@"lng"];
-
-            [apiProperties setValue:location forKey:@"location"];
-        }
-    }
 }
 
 #pragma mark - logRevenue
@@ -1084,8 +1011,6 @@ static NSString *const SEQUENCE_NUMBER = @"sequence_number";
         return;
     }
 
-    [self updateLocation];
-
     NSNumber* now = [NSNumber numberWithLongLong:[[self currentTime] timeIntervalSince1970] * 1000];
 
     // Stop uploading
@@ -1393,43 +1318,6 @@ static NSString *const SEQUENCE_NUMBER = @"sequence_number";
     }];
 }
 
-#pragma mark - location methods
-
-- (void)updateLocation
-{
-    if (_locationListeningEnabled) {
-        CLLocation *location = [_locationManager location];
-        @synchronized (_locationManager) {
-            if (location != nil) {
-                (void) SAFE_ARC_RETAIN(location);
-                SAFE_ARC_RELEASE(_lastKnownLocation);
-                _lastKnownLocation = location;
-            }
-        }
-    }
-}
-
-- (void)enableLocationListening
-{
-    _locationListeningEnabled = YES;
-    [self updateLocation];
-}
-
-- (void)disableLocationListening
-{
-    _locationListeningEnabled = NO;
-}
-
-- (void)useAdvertisingIdForDeviceId
-{
-    _useAdvertisingIdForDeviceId = YES;
-}
-
-- (void)disableIdfaTracking
-{
-    _disableIdfaTracking = YES;
-}
-
 #pragma mark - Getters for device data
 - (NSString*) getDeviceId
 {
@@ -1458,14 +1346,6 @@ static NSString *const SEQUENCE_NUMBER = @"sequence_number";
 - (NSString*)_getDeviceId
 {
     NSString *deviceId = nil;
-    if (_useAdvertisingIdForDeviceId) {
-        deviceId = _deviceInfo.advertiserID;
-    }
-
-    // return identifierForVendor
-    if (!deviceId) {
-        deviceId = _deviceInfo.vendorID;
-    }
 
     if (!deviceId) {
         // Otherwise generate random ID

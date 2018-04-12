@@ -479,43 +479,6 @@
  */
 - (void)setOffline:(BOOL)offline;
 
-/**
- Enables location tracking.
-
- If the user has granted your app location permissions, the SDK will also grab the location of the user. Amplitude will never prompt the user for location permissions itself, this must be done by your app.
-
- **Note:** the user's location is only fetched once per session. Use `updateLocation` to force the SDK to fetch the user's latest location.
- */
-- (void)enableLocationListening;
-
-/**
- Disables location tracking. If you want location tracking disabled on startup of the app, call disableLocationListening before you call initializeApiKey.
- */
-- (void)disableLocationListening;
-
-/**
- Forces the SDK to update with the user's last known location if possible.
-
- If you want to manually force the SDK to update with the user's last known location, call updateLocation.
- */
-- (void)updateLocation;
-
-/**
- Uses advertisingIdentifier instead of identifierForVendor as the device ID
-
- Apple prohibits the use of advertisingIdentifier if your app does not have advertising. Useful for tying together data from advertising campaigns to anlaytics data.
-
- **NOTE:** Must be called before initializeApiKey: is called to function.
- */
-- (void)useAdvertisingIdForDeviceId;
-
-/**
- Disables tracking of advertisingIdentifier by the SDK
-
- **NOTE:** Must be called before initializeApiKey: is called to function.
- */
-- (void)disableIdfaTracking;
-
 /**-----------------------------------------------------------------------------
  * @name Other Methods
  * -----------------------------------------------------------------------------
@@ -584,12 +547,6 @@
 + (void)setUserProperties:(NSDictionary*) userProperties __attribute((deprecated()));
 
 + (void)setUserId:(NSString*) userId __attribute((deprecated()));
-
-+ (void)enableLocationListening __attribute((deprecated()));
-
-+ (void)disableLocationListening __attribute((deprecated()));
-
-+ (void)useAdvertisingIdForDeviceId __attribute((deprecated()));
 
 + (void)printEventsCount __attribute((deprecated()));
 
