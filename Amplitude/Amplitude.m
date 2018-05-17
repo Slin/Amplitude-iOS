@@ -1321,7 +1321,11 @@ static NSString *const SEQUENCE_NUMBER = @"sequence_number";
 #pragma mark - Getters for device data
 - (NSString*) getDeviceId
 {
-    return _deviceId;
+	if(_deviceId)
+		return _deviceId;
+	
+	[_backgroundQueue waitUntilAllOperationsAreFinished];
+	return _deviceId;
 }
 
 - (long long) getSessionId
